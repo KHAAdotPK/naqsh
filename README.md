@@ -46,16 +46,23 @@ ZWNJ (`U+200C`) appears in Urdu text to control letter joining. naqsh handles tw
 
 Zero-Width Joiner (`U+200D`) is intentionally left untouched — it signals that two characters should render as one glyph and is considered part of the token.
 
-### Colon preservation between digits
+### Operator preservation between digits
 
-Because `:` is in the punctuation set, it would normally be stripped. A small state machine detects the pattern `digit : digit` and re-emits the colon, preserving time values.
+Both `:` and `+` are in the punctuation set and would normally be stripped. A state machine detects the pattern `digit operator digit` and re-emits the operator, preserving time values and arithmetic expressions.
 
 ```
-10:30  →  10:30      (preserved)
-اردو:  →  اردو       (colon stripped)
+10:30    →  10:30    (colon preserved)
+۲+۳      →  ۲+۳      (plus preserved)
+10+3+5   →  10+3+5   (chained plus preserved)
+10:30:45 →  10:30:45 (chained colons preserved)
+اردو:    →  اردو     (colon not between digits, stripped)
+10:abc   →  10 abc   (colon not followed by digit, stripped)
+10:+5    →  10 5     (chained operators, both stripped)
 ```
 
 All three digit systems are recognized: Western `0–9`, Eastern Arabic `٠–٩`, Urdu `۰–۹`.
+
+The two operator flags (`isColonFound`, `isPlusOperatorFound`) are mutually exclusive by construction. Adding support for a new operator requires one `else if` arm in the detection branch and one `else if` arm in the re-emit branch.
 
 ### `isUrduLetter`
 
@@ -157,7 +164,7 @@ for (auto& line : doc.lines()) {
 | `static unordered_set` | Punctuation set built once, not per line |
 | Compile-time recovery policy | Caller decides how aggressive invalid-byte handling should be |
 | Exclusions before letter ranges in `isUrduLetter` | Guarantees non-letters are never accepted even if ranges are later widened |
-| State machines for ZWNJ and colon | These are contextual rules — they cannot be handled with a simple character lookup |
+| State machines for ZWNJ, colon, and plus | These are contextual rules, they cannot be handled with a simple character lookup. Both operator flags are mutually exclusive, so adding a new operator is a localised two-line change |
 
 ---
 

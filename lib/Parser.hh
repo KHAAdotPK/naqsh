@@ -77,6 +77,8 @@ std::string Parser::cleanLine(const std::string& line)
     bool isDigitFound = false, isColonFound = false;
     // Variables for state machine logic for Zero Width Non-Joiner
     bool isZeroWidthNonJoinerFound = false;
+    // Variables for state machine logic for plus operator
+    bool isPlusOperatorFound = false;
     
     std::string result;
     result.reserve(line.size());
@@ -181,6 +183,7 @@ std::string Parser::cleanLine(const std::string& line)
                     At the end of the outer loop, the i variable is incremented by len, which skips the entire invalid sequence
                  */
                 isColonFound = false;
+                isPlusOperatorFound = false;
                 isDigitFound = false;
                 isZeroWidthNonJoinerFound = false;
                 validUTF8Sequence = false;
@@ -237,6 +240,7 @@ std::string Parser::cleanLine(const std::string& line)
                     We should reset all state flags in the #ifndef path too, just as we did in the #ifdef path:
                  */
                 isColonFound = false;
+                isPlusOperatorFound = false;
                 isDigitFound = false;
                 isZeroWidthNonJoinerFound = false;
 
@@ -321,22 +325,61 @@ std::string Parser::cleanLine(const std::string& line)
         //          The state machine logic ends here for Zero Width Non-Joiner         //
         /**********************************************************************************/
 
-        /*
-            The following logic handles the case where colon is between two digits as in 10:45
-            Becuase colon is in ALL_PUNCTUATION array, it gets removed automatically.
-            So we need to handle this case separately.
-         */
         /**********************************************************************************
-        // The state machine logic starts here for colon between two digits as in 10:45  //
-        // Check if cp is a digit                                                        //
+        // The state machine logic starts here for colon and plus operator between two   //
+        // digits as in 10:45 or 10+45. Check if cp is a digit                           //
         **********************************************************************************/
+        /*
+            State machine: preserve operator between two digits
+            ===================================================
+            Handles colon (U+003A) and plus (U+002B) that appear between
+            two digit characters. Both operators are in ALL_PUNCTUATION and
+            would normally be stripped. This state machine detects the
+            digit-operator-digit pattern and re-emits the operator before
+            the second digit is appended.
+
+            Digit sets recognized:
+                Western Arabic   0–9     (U+0030–U+0039)
+                Eastern Arabic   ٠–٩     (U+0660–U+0669)
+                Urdu             ۰–۹     (U+06F0–U+06F9)
+
+            Cases handled:
+
+                10:30           →  10:30       colon between two digits, preserved
+                10+3            →  10+3        plus between two digits, preserved
+                10+3+5          →  10+3+5      chained plus operators, all preserved
+                10:30:45        →  10:30:45    chained colons, all preserved
+                ۲+۳             →  ۲+۳         Urdu digits with plus, preserved
+                ۱۰:۳۰           →  ۱۰:۳۰       Urdu digits with colon, preserved
+
+                اردو:           →  اردو        colon not preceded by digit, dropped
+                :30             →  30          colon not preceded by digit, dropped
+                10:             →  10          colon not followed by digit, dropped
+                10:abc          →  10 abc      colon not followed by digit, dropped
+                10:+5           →  10 5        chained operators, both dropped
+                +30             →  30          plus not preceded by digit, dropped
+                10+             →  10          plus not followed by digit, dropped
+
+            Flags:
+                isDigitFound         — last character processed was a digit
+                isColonFound         — digit was seen, then colon; waiting for next digit
+                isPlusOperatorFound  — digit was seen, then plus; waiting for next digit
+
+            Invariant: isColonFound and isPlusOperatorFound are mutually exclusive.
+            Only one can be true at any point in the iteration.
+        */
 //#ifdef DROP_INVALID_UTF8_SEQUENCE        
         if (validUTF8Sequence)
 //#endif            
         {
             if (isDigit(cp))
             {
-                if (isColonFound) // If the previous character was a colon and this cp is didgit append a colon before appending this didit
+                if (isPlusOperatorFound) // If the previous character was a plus operator and this cp is didgit append a plus operator before appending this didit
+                {
+                    result += '+';
+                    isPlusOperatorFound = false; // Reset the flag
+                }
+                else if (isColonFound) // If the previous character was a colon and this cp is didgit append a colon before appending this didit
                 {
                     /*
                         Since U+003A is in the ASCII range (0x00–0x7F), UTF-8 encodes it as a single byte 0x3A — exactly what ':' is.
@@ -352,31 +395,46 @@ std::string Parser::cleanLine(const std::string& line)
                     result += ':';
                     isColonFound = false;
                 }
-                else
-                {
-                    isDigitFound = true; // In first(and every subsequent) iteration, if the character is a digit, set the flag to true
-                }
+                
+                // Set unconditionally, covers both the normal digit case and the
+                // case where an operator was just re-emitted and cp is still a digit.
+                isDigitFound = true; // In first(and every subsequent) iteration, if the character is a digit, set the flag to true                
             }
             else if (isDigitFound) // In this iteration cp is not digit, but the previous character was a digit. So we need to check if the current character is a colon 
             {
-                if (cp == U'\u003A') // If this code point (cp) is colon , reset isDigitFound and set isColonFound
-                {
-                    isDigitFound = false;
+                if (cp == U'\u002B') // If this code point (cp) is plus operator , reset isDigitFound and set isPlusOperatorFound
+                {                
+                    isPlusOperatorFound = true;
+                }
+                else if (cp == U'\u003A') // If this code point (cp) is colon , reset isDigitFound and set isColonFound
+                {                 
                     isColonFound = true;
                 }
-                else // If this code point (cp) is not colon , reset isDigitFound
-                {
-                    isDigitFound = false; 
-                }
+                                
+                // Set unconditionally, whether cp was an operator (colon/plus) or
+                // any other non-digit character, isDigitFound must clear. The operator
+                // flags carry the state forward if needed.
+                isDigitFound = false; 
+                
             }
-            else if (isColonFound) // In this iteration cp is not digit, and the previous character was not a digit but isColonFound is true (this is the case when colon is not followed by a digit)
+            else 
             {
-                isColonFound = false; // Reset the flag
+                /*
+                    Neither a digit nor a character following a digit.
+                    Any operator flag that was set (colon or plus) but never
+                    followed by a digit is discarded here. The operator was
+                    not between two digits so it does not belong in the output.
+                    Both flags are reset unconditionally because they are mutually
+                    exclusive by construction, so resetting the already false one
+                    is always a harmless no-op.
+                */
+                isColonFound = false; // Reset the flag. This is the case when colon is not followed by a digit
+                isPlusOperatorFound = false; // Reset the flag. This is the case when plus operator is not followed by a digit
             }
         }
-        /*********************************************************************************
-        // The state machine logic ends here for colon between two digits as in 10:45   //
-        *********************************************************************************/
+        /***********************************************************************************************************
+        // The state machine logic ends here for colon and plus operator between two digits as in 10:45 or 10+45  //
+        ***********************************************************************************************************/
 //#ifdef DROP_INVALID_UTF8_SEQUENCE        
         if (validUTF8Sequence)
 //#endif            
