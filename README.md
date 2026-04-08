@@ -178,7 +178,7 @@ The project is under active development. Issues and pull requests are welcome. I
 
 ## License
 
-
+This project is governed by a license, the details of which can be located in the accompanying file named 'LICENSE.' Please refer to this file for comprehensive information.
 
 ---
 
