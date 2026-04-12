@@ -332,11 +332,11 @@ std::string Parser::cleanLine(const std::string& line)
                     }
                 }
 
+                // Normalize code point for a given Urdu/Arabic alphabet
                 char32_t normalized = normalize(cp);
-
                 if (normalized != cp)
                 {
-                    // emit normalized UTF-8 bytes
+                    // Emit normalized UTF-8 bytes
                     appendCodePoint(result, normalized);
                     skip = true;
                 }
@@ -537,6 +537,15 @@ std::string Parser::cleanLine(const std::string& line)
                 else if (pendingDot != 0 && !dotSetByDigitMachine) // If the previous character was a dot and it was not set by the digit machine
                 {
                     pendingDot = 0; // alpha-set dot not followed by alpha, discard
+                }
+
+                // Normalize the digit, maps Eastern Arabic digits to Urdu digits
+                char32_t normalized = normalize(cp);                
+                if (normalized != cp)
+                {
+                    // Emit normalized UTF-8 bytes
+                    appendCodePoint(result, normalized);
+                    skip = true;
                 }
                 
                 /*
@@ -1002,18 +1011,63 @@ bool Parser::isUrduLetter(char32_t cp)
     return false;
 }
 
-/*
- * Returns the normalized code point for a given Urdu/Arabic letter.
+/**
+ * Returns the normalized code point for a given Urdu/Arabic character.
  * If no normalization is needed, returns cp unchanged.
  *
+ * Called for every alpha character that passes through the alpha machine
+ * in cleanLine(). The caller emits the normalized form via appendCodePoint()
+ * and sets skip = true to prevent the original bytes from being appended.
+ *
  * Normalizations applied:
- *   U+0643  Arabic kaf      →  U+06A9  Urdu keheh
- *   U+064A  Arabic yeh      →  U+06CC  Farsi yeh
- *   U+0647  Arabic heh      →  U+06C1  heh goal
- *   U+0623  Alif + hamza    →  U+0627  plain alif
- *   U+0625  Alif + hamza    →  U+0627  plain alif
- *   //U+0622  Alif + madda    →  U+0627  plain alif
- *   U+0671  Alif wasla      →  U+0627  plain alif
+ *
+ *   Section 1 — Letter normalization
+ *     Arabic keyboards and Urdu keyboards produce different code points
+ *     for visually identical letters. Without normalization the same word
+ *     typed on two different keyboards produces two different token strings.
+ *     U+0643  Arabic kaf          →  U+06A9  Urdu keheh
+ *     U+064A  Arabic yeh          →  U+06CC  Farsi yeh
+ *     U+0647  Arabic heh          →  U+06C1  heh goal
+ *
+ *   Section 2 — Hamza normalization
+ *     Multiple alif+hamza forms are collapsed to plain alif.
+ *     U+0623  Alif + hamza above  →  U+0627  plain alif
+ *     U+0625  Alif + hamza below  →  U+0627  plain alif
+ *     U+0671  Alif wasla          →  U+0627  plain alif
+ *
+ *     NOT normalized (intentionally excluded):
+ *     U+0622  Alif + madda (آ) — the madda indicates a long vowel that
+ *     changes the word's identity (e.g. آج "today", آپ "you"). Collapsing
+ *     آ to ا would produce non-existent words. Left unchanged.
+ *
+ *   Section 3 — Tatweel / Kashida
+ *     Handled via ALL_PUNCTUATION array in PunctuationSymbols.hh.
+ *     No entry needed here.
+ *
+ *   Section 4 — Whitespace normalization
+ *     Handled by collapseSpace() as a post-processing step.
+ *     No entry needed here.
+ *
+ *   Section 5 — Eastern Arabic digit normalization
+ *     Eastern Arabic digits (U+0660–U+0669) and Urdu digits (U+06F0–U+06F9)
+ *     are visually similar but distinct code points. Arabic-layout keyboards
+ *     and some Arabic text sources emit the Eastern Arabic form while Urdu
+ *     text conventionally uses the Urdu form. Without normalization the same
+ *     numeral in two encodings produces two different token strings.
+ *     All ten digits are mapped to the Urdu canonical form:
+ *     U+0660  ٠  →  U+06F0  ۰
+ *     U+0661  ١  →  U+06F1  ۱
+ *     U+0662  ٢  →  U+06F2  ۲
+ *     U+0663  ٣  →  U+06F3  ۳
+ *     U+0664  ٤  →  U+06F4  ۴
+ *     U+0665  ٥  →  U+06F5  ۵
+ *     U+0666  ٦  →  U+06F6  ۶
+ *     U+0667  ٧  →  U+06F7  ۷
+ *     U+0668  ٨  →  U+06F8  ۸
+ *     U+0669  ٩  →  U+06F9  ۹
+ *
+ * @param cp  Unicode code point (32-bit value)
+ * @return    Canonical code point, or cp unchanged if no normalization applies
  */
 char32_t Parser::normalize(char32_t cp)
 {
@@ -1036,9 +1090,8 @@ char32_t Parser::normalize(char32_t cp)
             U+0622 is Alif with madda, the madda is part of the word's pronunciation. The madda indicates a long vowel sound that changes the word's identity
             The normalization for U+0622 as 0x0627 is too aggressive
          */    
-        // case 0x0622: return 0x0627;  // Alif + madda   → plain alif 
+        // case 0x0622: return 0x0627;  // Alif + madda   → plain alif (intentionally excluded — see comment block above)
         case 0x0671: return 0x0627;  // Alif wasla     → plain alif
-        default:     return cp;      // no normalization needed
 
         /*
             3. Tatweel / Kashida removal. This takes place through ALL_PUNCTUATION array
@@ -1046,7 +1099,26 @@ char32_t Parser::normalize(char32_t cp)
         
         /*
             4. Whitespace normalization, method collapseSpace() handles this
-         */         
+         */
+        
+        /*
+            5. Eastern Arabic to Urdu digit normalization
+            ٣ U+0663 (Eastern Arabic) and ۳ U+06F3 (Urdu) are visually similar but different code points.
+            For a tokenizer that treats them as digit tokens they will be separate token types. This matters more for downstream NLP
+         */
+        case 0x0660: return 0x06F0;  // ٠ → ۰
+        case 0x0661: return 0x06F1;  // ١ → ۱
+        case 0x0662: return 0x06F2;  // ٢ → ۲
+        case 0x0663: return 0x06F3;  // ٣ → ۳
+        case 0x0664: return 0x06F4;  // ٤ → ۴
+        case 0x0665: return 0x06F5;  // ٥ → ۵
+        case 0x0666: return 0x06F6;  // ٦ → ۶
+        case 0x0667: return 0x06F7;  // ٧ → ۷
+        case 0x0668: return 0x06F8;  // ٨ → ۸
+        case 0x0669: return 0x06F9;  // ٩ → ۹
+        
+        
+        default:     return cp; // no normalization needed
     }
 }
 

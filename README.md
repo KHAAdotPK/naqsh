@@ -84,7 +84,7 @@ The two machines share a single `pendingDot` slot with an ownership flag (`dotSe
 
 ### Unicode normalization
 
-A `normalize` function maps visually identical but code-point-distinct characters to a single canonical form before they are written to the output. Applied to every alpha character as it passes through the cleaner.
+A `normalize` function maps visually identical but code-point-distinct characters to a single canonical form before they are written to the output. Called for every alpha character and every digit as each passes through the cleaner.
 
 **Letter normalization** — Arabic keyboards and Urdu keyboards produce different code points for the same letter:
 
@@ -100,8 +100,17 @@ A `normalize` function maps visually identical but code-point-distinct character
 |---|---|---|
 | U+0623 `أ` | U+0627 `ا` | Alif with hamza above |
 | U+0625 `إ` | U+0627 `ا` | Alif with hamza below |
-~~| U+0622 `آ` | U+0627 `ا` | Alif with madda |~~
 | U+0671 `ٱ` | U+0627 `ا` | Alif wasla |
+
+U+0622 `آ` (Alif with madda) is intentionally excluded — the madda indicates a long vowel that changes the word's identity (`آج` "today", `آپ` "you"). Collapsing it to plain alif would produce non-existent words.
+
+**Digit normalization** — Eastern Arabic digits and Urdu digits are visually similar but distinct code points. Arabic-layout keyboards emit the Eastern Arabic form while Urdu text conventionally uses the Urdu form:
+
+| Input | Canonical |
+|---|---|
+| U+0660–U+0669 `٠١٢٣٤٥٦٧٨٩` | U+06F0–U+06F9 `۰۱۲۳۴۵۶۷۸۹` |
+
+Digit normalization is applied inside the digit state machine so that operator preservation and normalization work correctly together — `٣٫١٤` becomes `۳٫۱۴` with the decimal separator intact.
 
 ### Whitespace normalization
 
@@ -172,7 +181,6 @@ naqsh is currently a cleaner and normalizer. The goal is a full Urdu tokenizer A
 A `tokenize` method that returns a `std::vector<std::string>` of discrete tokens from a cleaned line. Consecutive spaces collapsed, empty tokens discarded, leading and trailing whitespace handled inside the library rather than pushed to the caller.
 
 ### Phase 2 — Extended normalization
-- Eastern Arabic digits vs Urdu digits for the same numeral
 - URL and domain name detection to preserve full URLs as single tokens rather than relying on the alpha-dot-alpha heuristic
 - Diacritic stripping as an optional mode — zabar, zer, pesh, shadda removed or preserved depending on caller preference
 
@@ -209,7 +217,9 @@ for (auto& line : doc.lines()) {
 | Exclusions before letter ranges in `isUrduLetter` | Guarantees non-letters are never accepted even if ranges are later widened |
 | State machines for ZWNJ, colon, plus, and dot | These are contextual rules — a simple character lookup cannot handle them |
 | `pendingDot` shared between digit and alpha machines | One ownership flag (`dotSetByDigitMachine`) makes the interaction explicit rather than relying on execution order |
+| Digit normalization inside the digit state machine | Ensures operator preservation and normalization work in the correct order — the operator is re-emitted before the normalized digit is appended |
 | `normalize` as a pure switch table | Adding a new normalization is a one-line change with no risk of affecting other code paths |
+| U+0622 excluded from hamza normalization | Alif with madda is a distinct phoneme in Urdu — collapsing it to plain alif produces non-existent words |
 | `collapseSpace` as a separate post-processing step | Keeps the main decode loop simple — whitespace normalization runs once on the finished string |
 
 ---
