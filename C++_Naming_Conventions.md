@@ -29,6 +29,10 @@ This document outlines the naming conventions to be used in this project for con
 - **Example:** `void _internalHelper();`, `bool _validateInput();`
 - The underscore indicates that the method is intended for internal use only.
 
+### Method arguments
+- Use **snake_case** (all lowercase, words separated by underscores).
+- **Example:** `void updatePosition(int player_score);`, `int getScore(const std::string& user_name) const;`, `void setVisible(bool visible);`
+
 ## Constants
 - Use **UPPER_CASE** with underscores separating words.
 - **Example:** `const int MAX_PLAYERS = 10;`, `const double PI = 3.14159;`

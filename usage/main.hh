@@ -9,7 +9,7 @@
 #ifdef  CSV_PARSER_TOKEN_DELIMITER
 #undef  CSV_PARSER_TOKEN_DELIMITER
 #endif
-#define CSV_PARSER_TOKEN_DELIMITER  ','
+#define CSV_PARSER_TOKEN_DELIMITER  ' '
 
 #include "../header.hh"
 

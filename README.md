@@ -133,7 +133,7 @@ Digit normalization is applied inside the digit state machine so that operator p
 naqsh/
 ├── header.hh                  ←  top-level include, pulls in both libraries
 └── lib/
-    ├── Parser.hh              ←  UTF-8 decoder, cleanLine, state machines,
+    ├── Cleaner.hh             ←  UTF-8 decoder, cleanLine, state machines,
     │                              normalization, collapseSpace
     └── PunctuationSymbols.hh  ←  Unicode code point definitions
 ```
@@ -147,10 +147,10 @@ naqsh/
 
 int main()
 {
-    Parser parser;
+    Cleaner cleaner;
 
     std::string line = "اسلام علیکم! آج کا دن 10:30 بجے شروع ہوا۔";
-    std::string cleaned = parser.cleanLine(line);
+    std::string cleaned = cleaner.cleanLine(line);
 
     // result: "اسلام علیکم آج کا دن 10:30 بجے شروع ہوا"
 

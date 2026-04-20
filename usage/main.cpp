@@ -12,27 +12,33 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    TABLES* tables = nullptr;
     std::string inputFilename = argv[1];
-    std::string outputFilename = argv[2];
 
-    std::ifstream inputFile(inputFilename);
-    if (!inputFile.is_open()) {
-        std::cerr << "Error: Could not open file " << inputFilename << std::endl;
-        return 1;
+    try
+    {
+        Parser parser(inputFilename);
+
+        tables = parser.build_hash_table();
+    }
+    catch (const std::runtime_error& e)
+    {
+        std::cerr << e.what() << std::endl; 
+
+        return -1;      
     }
 
-    std::ofstream outputFile(outputFilename);
-    if (!outputFile.is_open()) {
-        std::cerr << "Error: Could not open file " << outputFilename << std::endl;
-        return 1;
-    }
+    std::ofstream ofile;
+    ofile.open(argv[2]);
 
-    Parser parser;
-    std::string line;
-    while (std::getline(inputFile, line)) {
-        outputFile << parser.cleanLine(line) << std::endl;
-    }
+    // Debug tables...
+    for (size_t i = 0; i < tables->get_bucket_used(); i++)
+    {
+        std::cout<< "i = " << i << ", " << tables->word_id_to_hash[i] << " -> " << tables->hash_to_word_record[tables->word_id_to_hash[i]]->word;
 
+        ofile<< tables->hash_to_word_record[tables->word_id_to_hash[i]]->word << " ";
+    }
+        
     return 0;
 }
 

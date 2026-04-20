@@ -2,6 +2,28 @@
     ./header.hh
     Q@hackers.pk
  */
+
+ /*
+    NORMALIZE_RELIGIOUS_LIGATURES
+    ------------------------------
+    When defined, cleanLine() expands Arabic Presentation Forms ligatures
+    (U+FB50–U+FDFF) to their constituent letters before processing.
+    Off by default — naqsh targets general Urdu NLP pipelines where these
+    code points are rare. Enable only when processing religious corpora.
+
+    Compile with:
+        g++ -std=c++17 -DNORMALIZE_RELIGIOUS_LIGATURES -o my_program main.cpp
+*/
+
+/*
+    DROP_INVALID_UTF8_SEQUENCE
+    --------------------------
+    This compile-time policy flag, When defined, cleanLine() drops invalid UTF-8 sequences entirely.
+    
+    Compile with:
+        g++ -std=c++17 -DDROP_INVALID_UTF8_SEQUENCE -o my_program main.cpp
+*/
+
 #ifndef CSV_PARSER_LIB_HEADER_HH
 #define CSV_PARSER_LIB_HEADER_HH
 
@@ -10,6 +32,9 @@
 #include <fstream>
 #include <string>
 #include <unordered_set>
+#include <vector>
+#include <sstream>
+#include <iterator>
 
 /*
     Token Delimiter
@@ -56,7 +81,26 @@
 #define UTF_8_SUBSIQUENT_BYTE_LEFT_SHIFT 6
 */
 
-#include "./lib/PunctuationSymbols.hh"
-#include "./lib/Parser.hh"
+// Dependencies
+#include "./lib/hash/header.hh"
+#include "./lib/src/PunctuationSymbols.hh"
+#include "./lib/src/Cleaner.hh"
+#include "./lib/parser/header.hh"
+
+
+// Source Files
+//#include "./lib/src/WordRecord.hh"
+/*#include "./lib/parser/WordRecord.hh"*/
+/*
+#include "./lib/src/PunctuationSymbols.hh"
+#include "./lib/src/Cleaner.hh"
+*/
+//#include "./lib/src/Iterator.hh"
+/*#include "./lib/parser/Iterator.hh"*/
+//#include "./lib/src/Parser.hh"
+
+/*#include "./lib/parser/Parser.hh"*/
+
+//#include "./lib/parser/header.hh"
 
 #endif // CSV_PARSER_LIB_HEADER_HH
